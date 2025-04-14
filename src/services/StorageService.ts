@@ -10,6 +10,7 @@ interface GameState {
   isReplayMode: boolean;
   elapsedTime: number;
   nextFlag: Flag | null;
+  allFlags: Flag[];
   quizState: {
     options: string[];
     translatedOptions: string[];

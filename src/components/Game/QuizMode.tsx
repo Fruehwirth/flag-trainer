@@ -51,7 +51,7 @@ export const QuizMode: React.FC = observer(() => {
           gameStore.allFlags.filter(f => f.country !== gameStore.currentFlag?.country), 
           gameStore.currentFlag, 
           3, 
-          gameStore.originalFlags,
+          gameStore.allFlags,
           settingsStore.difficulty
         );
         

@@ -66,7 +66,8 @@ export class GameStore {
       quizState: this.quizState,
       typeState: this.typeState,
       elapsedTime: this.elapsedTime,
-      nextFlag: this.nextFlag
+      nextFlag: this.nextFlag,
+      allFlags: this.allFlags
     });
   }
 
@@ -114,7 +115,12 @@ export class GameStore {
       if (!answerIsCorrect) {
         this.incorrectFlags.push(this.currentFlag!);
       }
-      
+    });
+
+    // Wait for animations to complete before updating flags
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    runInAction(() => {
       // Remove the current flag from remaining flags
       this.remainingFlags = this.remainingFlags.slice(1);
       
@@ -182,7 +188,7 @@ export class GameStore {
   }
 
   get scorePercentage(): string {
-    let answeredFlags = this.allFlags.length - this.remainingFlags.length;
+    const answeredFlags = this.allFlags.length - this.remainingFlags.length;
     if (answeredFlags === 0) return '0';
     return ((this.correctCount / answeredFlags) * 100).toFixed(0);
   }
