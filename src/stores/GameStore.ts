@@ -8,13 +8,11 @@ import { StorageService } from '../services/StorageService';
 export class GameStore {
   currentFlag: Flag | null = null;
   remainingFlags: Flag[] = [];
-  allFlags: Flag[] = [];
-  originalFlags: Flag[] = [];
-  correctCount: number = 0;
   incorrectFlags: Flag[] = [];
   isLoading: boolean = false;
   isGameOver: boolean = false;
   elapsedTime: number = 0;
+  nextFlag: Flag | null = null;
 
   private quizState: {
     options: string[];
@@ -32,17 +30,6 @@ export class GameStore {
 
   private _isReplayMode = false;
   private timerInterval: NodeJS.Timer | null = null;
-
-  // Add new property to track prepared replay data
-  private preparedReplayFlags: Flag[] = [];
-
-  private pickerState: {
-    options: string[];
-    flagUrls: string[];
-    isAnswered: boolean;
-    selectedAnswer: string | null;
-  } | null = null;
-
   private _isNewHighscore: boolean = false;
 
   constructor(private settingsStore: SettingsStore) {
@@ -55,9 +42,6 @@ export class GameStore {
     if (stored) {
       this.currentFlag = stored.currentFlag;
       this.remainingFlags = stored.remainingFlags;
-      this.originalFlags = stored.originalFlags;
-      this.allFlags = stored.allFlags;
-      this.correctCount = stored.correctCount;
       this.incorrectFlags = stored.incorrectFlags;
       this.isLoading = false;
       this.isGameOver = stored.isGameOver;
@@ -65,6 +49,7 @@ export class GameStore {
       this.quizState = stored.quizState;
       this.typeState = stored.typeState;
       this.elapsedTime = stored.elapsedTime;
+      this.nextFlag = stored.nextFlag;
     } else {
       this.initializeGame();
     }
@@ -74,44 +59,39 @@ export class GameStore {
     StorageService.saveGameState({
       currentFlag: this.currentFlag,
       remainingFlags: this.remainingFlags,
-      allFlags: this.allFlags,
-      originalFlags: this.originalFlags,
-      correctCount: this.correctCount,
       incorrectFlags: this.incorrectFlags,
       isLoading: this.isLoading,
       isGameOver: this.isGameOver,
       isReplayMode: this._isReplayMode,
       quizState: this.quizState,
       typeState: this.typeState,
-      elapsedTime: this.elapsedTime
+      elapsedTime: this.elapsedTime,
+      nextFlag: this.nextFlag
     });
   }
 
   async initializeGame(): Promise<void> {
     this.isLoading = true;
-    this.correctCount = 0;
     this.incorrectFlags = [];
     this.isGameOver = false;
     this.elapsedTime = 0;
     this.quizState = null;
     this.typeState = null;
-    this.pickerState = null;
 
     try {
       const flags = await FlagService.getFlagsForRegions(this.settingsStore.selectedRegions);
       runInAction(() => {
-        this.originalFlags = flags;
-        this.allFlags = flags;
+        // Only shuffle once at initialization
         this.remainingFlags = shuffle([...flags]);
         this.currentFlag = this.remainingFlags[0] || null;
-        this.correctCount = 0;
+        // Prepare the next flag
+        this.nextFlag = this.remainingFlags[1] || null;
         this.incorrectFlags = [];
         this.isGameOver = false;
         this.isLoading = false;
         this.quizState = null;
         this.typeState = null;
         this._isReplayMode = false;
-        this.preparedReplayFlags = [];
         this.startTimer();
         this.saveToStorage();
       });
@@ -131,37 +111,39 @@ export class GameStore {
       answer.toLowerCase() === this.currentFlag.country.toLowerCase();
     
     runInAction(() => {
-      if (answerIsCorrect) {
-        this.correctCount++;
-      } else {
+      if (!answerIsCorrect) {
         this.incorrectFlags.push(this.currentFlag!);
       }
       
-      if (this.remainingFlags.length === 1) {
+      // Remove the current flag from remaining flags
+      this.remainingFlags = this.remainingFlags.slice(1);
+      
+      // Update current and next flags
+      this.currentFlag = this.nextFlag;
+      this.nextFlag = this.remainingFlags[0] || null;
+      
+      // Check if game is over
+      if (this.remainingFlags.length === 0) {
         this.isGameOver = true;
         this.stopTimer();
         this.quizState = null;
         this.typeState = null;
-        this.pickerState = null;
         
-        if (this.incorrectFlags.length > 0) {
+        if (this.incorrectFlags.length > 0 && !this._isReplayMode) {
+          // Prepare incorrect flags for replay
           setTimeout(() => {
-            this.preparedReplayFlags = shuffle([...this.incorrectFlags]);
-            this.remainingFlags = [];
-            this.currentFlag = this.preparedReplayFlags[0];
-            this.checkAndUpdateHighscore();
+            runInAction(() => {
+              this.remainingFlags = shuffle([...this.incorrectFlags]);
+              this.currentFlag = this.remainingFlags[0];
+              this.nextFlag = this.remainingFlags[1] || null;
+              this.checkAndUpdateHighscore();
+            });
           }, 300);
         } else {
-          this.remainingFlags = [];
           this.currentFlag = null;
+          this.nextFlag = null;
           this.checkAndUpdateHighscore();
         }
-      } else {
-        this.remainingFlags = this.remainingFlags.slice(1);
-        this.currentFlag = this.remainingFlags[0] || null;
-        this.quizState = null;
-        this.typeState = null;
-        this.pickerState = null;
       }
       
       this.saveToStorage();
@@ -173,16 +155,15 @@ export class GameStore {
   async replayIncorrect(): Promise<void> {
     runInAction(() => {
       this._isReplayMode = true;
-      this.allFlags = [...this.incorrectFlags];
-      this.remainingFlags = this.preparedReplayFlags;
-      this.correctCount = 0;
+      this.remainingFlags = shuffle([...this.incorrectFlags]);
+      this.currentFlag = this.remainingFlags[0];
+      this.nextFlag = this.remainingFlags[1] || null;
       this.incorrectFlags = [];
       this.isGameOver = false;
       this.elapsedTime = 0;
       this.quizState = null;
-      this.pickerState = null;
+      this.typeState = null;
       this.startTimer();
-      this.preparedReplayFlags = [];
       this.saveToStorage();
     });
   }
@@ -219,9 +200,6 @@ export class GameStore {
     runInAction(() => {
       this.currentFlag = null;
       this.remainingFlags = [];
-      this.allFlags = [];
-      this.originalFlags = [];
-      this.correctCount = 0;
       this.incorrectFlags = [];
       this.isLoading = false;
       this.isGameOver = false;
@@ -256,17 +234,14 @@ export class GameStore {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  getPickerState() {
-    return this.pickerState;
+  get correctCount(): number {
+    return this.isReplayMode ? 
+      this.remainingFlags.length :
+      this.allFlags.length - (this.remainingFlags.length + this.incorrectFlags.length);
   }
 
-  savePickerState(state: {
-    options: string[];
-    flagUrls: string[];
-    isAnswered: boolean;
-    selectedAnswer: string | null;
-  }) {
-    this.pickerState = state;
+  get allFlags(): Flag[] {
+    return this.isReplayMode ? this.incorrectFlags : [...this.remainingFlags, ...this.incorrectFlags];
   }
 
   get isReplayMode(): boolean {

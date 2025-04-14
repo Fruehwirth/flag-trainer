@@ -4,14 +4,12 @@ import { Flag } from '../types/Flag';
 interface GameState {
   currentFlag: Flag | null;
   remainingFlags: Flag[];
-  allFlags: Flag[];
-  originalFlags: Flag[];
-  correctCount: number;
   incorrectFlags: Flag[];
   isLoading: boolean;
   isGameOver: boolean;
   isReplayMode: boolean;
   elapsedTime: number;
+  nextFlag: Flag | null;
   quizState: {
     options: string[];
     translatedOptions: string[];
@@ -65,26 +63,21 @@ export class StorageService {
     localStorage.removeItem(this.GAME_STATE_KEY);
   }
 
-  static getHighscore(regions: Region[], gameMode: GameMode, difficulty: Difficulty): number | null {
+  static setHighscore(regions: Region[], mode: GameMode, difficulty: Difficulty, score: number): void {
+    const key = `${regions.sort().join(',')}_${mode}_${difficulty}`;
     const highscores = this.getHighscores();
-    const key = this.createHighscoreKey(regions, gameMode, difficulty);
-    return highscores[key] || null;
-  }
-
-  static setHighscore(regions: Region[], gameMode: GameMode, difficulty: Difficulty, score: number): void {
-    const highscores = this.getHighscores();
-    const key = this.createHighscoreKey(regions, gameMode, difficulty);
     highscores[key] = score;
     localStorage.setItem(this.HIGHSCORES_KEY, JSON.stringify(highscores));
+  }
+
+  static getHighscore(regions: Region[], mode: GameMode, difficulty: Difficulty): number | null {
+    const key = `${regions.sort().join(',')}_${mode}_${difficulty}`;
+    const highscores = this.getHighscores();
+    return highscores[key] || null;
   }
 
   private static getHighscores(): Record<string, number> {
     const stored = localStorage.getItem(this.HIGHSCORES_KEY);
     return stored ? JSON.parse(stored) : {};
-  }
-
-  private static createHighscoreKey(regions: Region[], gameMode: GameMode, difficulty: Difficulty): string {
-    const sortedRegions = [...regions].sort().join(',');
-    return `${sortedRegions}|${gameMode}|${difficulty}`;
   }
 } 
